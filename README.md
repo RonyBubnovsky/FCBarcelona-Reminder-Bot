@@ -67,6 +67,7 @@ TELEGRAM_TOKEN=your_telegram_bot_token
 FOOTBALL_API_KEY=your_football_data_org_api_key
 MONGODB_URI=your_mongodb_connection_string
 PORT=8080
+DEVELOPMENT=1
 ```
 
 ### How to Get Environment Variables:
