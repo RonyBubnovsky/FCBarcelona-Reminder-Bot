@@ -1,4 +1,4 @@
-name: Run Tests
+name: CI/CD Pipeline
 
 on:
   push:
@@ -33,3 +33,12 @@ jobs:
         run: |
           source venv/bin/activate
           python -m unittest discover
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Trigger Render Deployment
+        run: |
+          curl -X POST ${{ secrets.RENDER_DEPLOY_HOOK }}
