@@ -25,6 +25,7 @@ load_dotenv()
 
 # Retrieve credentials and configuration
 TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
+print(TELEGRAM_TOKEN)
 FOOTBALL_API_KEY = os.environ.get('FOOTBALL_API_KEY')
 PORT = int(os.environ.get('PORT', 8080))
 MONGODB_URI = os.environ.get('MONGODB_URI')
@@ -115,13 +116,13 @@ def fetch_game_schedule():
         print("Error fetching match schedule:", response.status_code, response.text)
         return []
 
-def send_reminder(bot, game_time, hours_before, opponent):
+def send_reminder(bot, game_time, hours_before, opponent, home_away):
     """
     Sends a reminder message via the Telegram bot to all registered chats.
     """
     message = (
-        f"Reminder: FC Barcelona match against {opponent} at {game_time.strftime('%Y-%m-%d %H:%M %Z')} "
-        f"in {hours_before} hours!"
+        f"Reminder: FC Barcelona {home_away} match against {opponent} at "
+        f"{game_time.strftime('%Y-%m-%d %H:%M %Z')} in {hours_before} hours!"
     )
     for chat in chats_collection.find():
         chat_id = chat['chat_id']
@@ -129,7 +130,7 @@ def send_reminder(bot, game_time, hours_before, opponent):
             bot.send_message(chat_id=chat_id, text=message)
         except Exception as e:
             print(f"Error sending reminder to chat {chat_id}: {e}")
-    print(f"Sent {hours_before}h reminder for game at {game_time} against {opponent}.")
+    print(f"Sent {hours_before}h reminder for game at {game_time} against {opponent} ({home_away}).")
 
 def schedule_reminders(bot, scheduler):
     """
@@ -141,6 +142,9 @@ def schedule_reminders(bot, scheduler):
     for match in matches:
         game_time = match['localDate']
         opponent = get_opponent(match)
+        # Determine home or away based on FC Barcelona's team ID (81)
+        is_home = match.get('homeTeam', {}).get('id') == 81
+        home_away = "Home" if is_home else "Away"
         if game_time > now:
             for hours in [7, 5, 2]:
                 reminder_time = game_time - datetime.timedelta(hours=hours)
@@ -150,10 +154,10 @@ def schedule_reminders(bot, scheduler):
                         send_reminder,
                         'date',
                         run_date=reminder_time,
-                        args=[bot, game_time, hours, opponent],
+                        args=[bot, game_time, hours, opponent, home_away],
                         id=job_id
                     )
-                    print(f"Scheduled {hours}h reminder for game at {game_time} against {opponent} (runs at {reminder_time}).")
+                    print(f"Scheduled {hours}h reminder for game at {game_time} against {opponent} ({home_away}) (runs at {reminder_time}).")
 
 def update_schedule(bot, scheduler):
     """
@@ -206,7 +210,11 @@ def start(update, context):
         if game_time and now <= game_time <= week_later:
             comp_name = match.get("competition", {}).get("name", "").lower()
             opponent = get_opponent(match)
-            match_info = f"{game_time.strftime('%Y-%m-%d %H:%M %Z')} - vs {opponent}"
+            # Determine if it's a home or away game based on FC Barcelona's team ID (81)
+            is_home = match.get('homeTeam', {}).get('id') == 81
+            home_away = "Home" if is_home else "Away"
+            match_info = f"{game_time.strftime('%Y-%m-%d %H:%M %Z')} - vs {opponent} ({home_away})"
+            
             if "champions" in comp_name:
                 champions_games.append(match_info)
             elif "liga" in comp_name:
@@ -272,49 +280,44 @@ def main():
     # Initialize and start the scheduler
     scheduler = BackgroundScheduler(timezone="Asia/Jerusalem")
     scheduler.start()
-    schedule_reminders(updater.bot, scheduler)
+    schedule_reminders(bot, scheduler)
     scheduler.add_job(
         update_schedule,
         'cron',
         hour=0,
         minute=0,
-        args=[updater.bot, scheduler],
+        args=[bot, scheduler],
         id="daily_update"
     )
 
-    try:
-        if os.environ.get('RENDER'):
-            # Start webhook monitoring in a background thread
-            monitor_thread = threading.Thread(target=webhook_monitor, daemon=True)
-            monitor_thread.start()
-            
-            webhook_url = os.environ.get('WEBHOOK_URL')
-            if webhook_url:
-                full_webhook_url = f"{webhook_url}/{TELEGRAM_TOKEN}"
-                bot.set_webhook(full_webhook_url)
-                print(f"Webhook set to: {full_webhook_url}")
-                
-                # Start Flask server
-                app.run(host='0.0.0.0', port=PORT)
-            else:
-                print("Error: WEBHOOK_URL environment variable not set")
-        else:
-            # Local development - use polling
+    if os.environ.get('DEVELOPMENT'):
+        # In development mode, delete the webhook first and then use polling.
+        print("Running in development mode: deleting webhook and using polling.")
+        try:
             bot.delete_webhook()
+            # Wait briefly to ensure deletion propagates
+            time.sleep(1)
+        except Exception as e:
+            print("Error deleting webhook:", e)
+        try:
             updater.start_polling()
-            print("Bot started in polling mode")
-            try:
-                updater.idle()
-            except KeyboardInterrupt:
-                print("Bot stopping... Attempting to restore webhook...")
-                # Try to restore webhook before exiting
-                if os.environ.get('RENDER'):
-                    restore_webhook()
-                print("Webhook restored, bot stopped.")
-    except Exception as e:
-        print(f"Error in main: {e}")
-        if os.environ.get('RENDER'):
+            updater.idle()
+        except KeyboardInterrupt:
+            print("Exiting development mode, restoring webhook...")
             restore_webhook()
+    else:
+        # In production mode, assume Render is active and use the webhook.
+        monitor_thread = threading.Thread(target=webhook_monitor, daemon=True)
+        monitor_thread.start()
+        webhook_url = os.environ.get('WEBHOOK_URL')
+        if webhook_url:
+            full_webhook_url = f"{webhook_url}/{TELEGRAM_TOKEN}"
+            bot.set_webhook(full_webhook_url)
+            print(f"Webhook set to: {full_webhook_url}")
+            app.run(host='0.0.0.0', port=PORT)
+        else:
+            print("Error: WEBHOOK_URL environment variable not set")
+
 
 if __name__ == '__main__':
     main()
