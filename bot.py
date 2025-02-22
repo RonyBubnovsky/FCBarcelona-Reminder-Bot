@@ -6,6 +6,7 @@ schedules reminders (7, 5, and 2 hours before each match), and sends notificatio
 to all registered users. Registered chat IDs are stored persistently in MongoDB.
 A minimal Flask web server is run on the specified PORT (for deployment purposes).
 
+Author: Your Name
 """
 
 import os
@@ -134,6 +135,16 @@ def register_chat(chat_id):
     else:
         print(f"Chat {chat_id} already registered.")
 
+def remove_chat(chat_id):
+    """
+    Removes a chat ID from the MongoDB database.
+    """
+    if chats_collection.find_one({"chat_id": chat_id}) is not None:
+        chats_collection.delete_one({"chat_id": chat_id})
+        print(f"Removed chat: {chat_id}")
+    else:
+        print(f"Chat {chat_id} was not registered.")
+
 def start(update, context):
     """
     Handler for the /start command.
@@ -177,6 +188,15 @@ def start(update, context):
     
     update.message.reply_text(welcome)
 
+def remove(update, context):
+    """
+    Handler for the /remove command.
+    Removes the user's chat ID from the persistent database and confirms removal.
+    """
+    chat_id = update.message.chat.id
+    remove_chat(chat_id)
+    update.message.reply_text("You have been removed from FC Barcelona reminders. Send /start to register again.")
+
 def main():
     # Start Flask server in a separate thread (for port binding on deployment)
     flask_thread = threading.Thread(target=run_flask)
@@ -188,6 +208,7 @@ def main():
     updater = Updater(TELEGRAM_TOKEN, use_context=True)
     dp = updater.dispatcher
     dp.add_handler(CommandHandler("start", start))
+    dp.add_handler(CommandHandler("remove", remove))
 
     # Initialize APScheduler with Israel timezone
     scheduler = BackgroundScheduler(timezone="Asia/Jerusalem")
@@ -206,8 +227,13 @@ def main():
         id="daily_update"
     )
 
-    updater.start_polling()
-    updater.idle()
+    run_bot = os.environ.get('RUN_BOT', 'local')
+    if run_bot == 'local':
+        updater.start_polling()
+        updater.idle()
+    else:
+        print("Bot polling not started as instance is marked as deployed")
+
 
 if __name__ == '__main__':
     main()
