@@ -20,6 +20,7 @@ As a passionate FC Barcelona fan, I often found myself missing games or rushing 
 ## Features
 - 🕒 Automated reminders 7, 5, and 2 hours before each match
 - ⚽ Covers both League and Champions League matches
+- 📊 Provides current La Liga standings via the `/league` command and Champions League standings via the `/championsLeague` command
 - 🌐 Match times automatically converted to Israel timezone
 - 💾 Persistent storage of user data using MongoDB
 - 🔄 Daily schedule updates to ensure accuracy
@@ -29,9 +30,11 @@ As a passionate FC Barcelona fan, I often found myself missing games or rushing 
 You can try the bot right now:
 1. Search for "FCBarcelonaReminderBot" on Telegram
 2. Start a chat with the bot
-3. Send the `/start` command to begin receiving notifications
-4. Send the `/remove` command if you wish to stop receiving notifications
-5. You'll receive match reminders automatically!
+3. Send the `/start` command to begin receiving notifications and view your upcoming match schedule
+4. Send the `/league` command to see the current La Liga standings
+5. Send the `/championsLeague` command to view the current Champions League standings
+6. Send the `/remove` command if you wish to stop receiving notifications
+7. Enjoy automatic match reminders and on-demand standings updates!
 
 ## Prerequisites
 - Python 3.8 or higher
