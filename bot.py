@@ -1,20 +1,10 @@
-"""
-FC Barcelona Reminder Bot with Persistent MongoDB Storage, Flask Web Server, and Multi-User Support
-
-This bot fetches FC Barcelona's match schedules from Football-Data.org v4,
-schedules reminders (7, 5, and 2 hours before each match), and sends notifications
-to all registered users. Registered chat IDs are stored persistently in MongoDB.
-A minimal Flask web server is run on the specified PORT (for deployment purposes).
-
-Author: Your Name
-"""
-
 import os
 import datetime
 import requests
 import pytz
 import threading
-from flask import Flask
+import telegram
+from flask import Flask, request
 from telegram.ext import Updater, CommandHandler
 from apscheduler.schedulers.background import BackgroundScheduler
 from dotenv import load_dotenv
@@ -26,7 +16,7 @@ load_dotenv()
 # Retrieve credentials and configuration
 TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
 FOOTBALL_API_KEY = os.environ.get('FOOTBALL_API_KEY')
-PORT = int(os.environ.get('PORT', 5000))
+PORT = int(os.environ.get('PORT', 8080))
 MONGODB_URI = os.environ.get('MONGODB_URI')
 
 # Connect to MongoDB and use the "fcbarca_bot" database
@@ -40,15 +30,8 @@ FOOTBALL_API_URL = "http://api.football-data.org/v4/teams/81/matches?status=SCHE
 # Define Israel timezone
 israel_tz = pytz.timezone("Asia/Jerusalem")
 
-# Initialize Flask app for Render port binding
+# Initialize Flask app
 app = Flask(__name__)
-
-@app.route('/')
-def index():
-    return "FC Barcelona Reminder Bot is running!"
-
-def run_flask():
-    app.run(host='0.0.0.0', port=PORT)
 
 def get_opponent(match):
     """
@@ -197,14 +180,30 @@ def remove(update, context):
     remove_chat(chat_id)
     update.message.reply_text("You have been removed from FC Barcelona reminders. Send /start to register again.")
 
-def main():
-    # Initialize Telegram bot and dispatcher
-    updater = Updater(TELEGRAM_TOKEN, use_context=True)
-    dp = updater.dispatcher
-    dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(CommandHandler("remove", remove))
+@app.route(f'/{TELEGRAM_TOKEN}', methods=['POST'])
+def webhook():
+    """Handle incoming webhook updates from Telegram"""
+    update = telegram.Update.de_json(request.get_json(force=True), bot)
+    dispatcher.process_update(update)
+    return 'ok'
 
-    # Initialize APScheduler with Israel timezone and schedule jobs
+@app.route('/')
+def index():
+    return "FC Barcelona Reminder Bot is running!"
+
+def main():
+    global bot, dispatcher  # Make these global so webhook handler can access them
+    
+    # Initialize bot and dispatcher
+    updater = Updater(TELEGRAM_TOKEN, use_context=True)
+    bot = updater.bot
+    dispatcher = updater.dispatcher
+    
+    # Add command handlers
+    dispatcher.add_handler(CommandHandler("start", start))
+    dispatcher.add_handler(CommandHandler("remove", remove))
+
+    # Initialize and start the scheduler
     scheduler = BackgroundScheduler(timezone="Asia/Jerusalem")
     scheduler.start()
     schedule_reminders(updater.bot, scheduler)
@@ -217,33 +216,29 @@ def main():
         id="daily_update"
     )
 
-    # Check the environment variable to decide the mode
-    run_bot = os.environ.get('RUN_BOT', 'local')
-    if run_bot == 'local':
-        # In local mode, start a Flask server for health checks and use polling
-        flask_thread = threading.Thread(target=run_flask)
-        flask_thread.daemon = True
-        flask_thread.start()
-        print(f"Flask web server running on port {PORT}...")
-        updater.start_polling()
-        updater.idle()
-    else:
-        # In deployed mode, use webhooks and do not start a separate Flask server
+    # Check deployment environment
+    if os.environ.get('RENDER'):
+        # Running on Render - use webhooks
         webhook_url = os.environ.get('WEBHOOK_URL')
         if webhook_url:
-            full_webhook_url = f"{webhook_url}/{TELEGRAM_TOKEN}"
-            updater.start_webhook(listen="0.0.0.0", port=PORT, url_path=TELEGRAM_TOKEN)
-            updater.bot.set_webhook(full_webhook_url)
-            print(f"Webhook set to: {full_webhook_url}")
+            # Remove any existing webhook first
+            bot.delete_webhook()
+            
+            # Set up the new webhook
+            webhook_url = f"{webhook_url}/{TELEGRAM_TOKEN}"
+            bot.set_webhook(webhook_url)
+            print(f"Webhook set to: {webhook_url}")
+            
+            # Start Flask server
+            app.run(host='0.0.0.0', port=PORT)
         else:
-            print("WEBHOOK_URL is not set in environment variables.")
+            print("Error: WEBHOOK_URL environment variable not set")
+    else:
+        # Local development - use polling
+        bot.delete_webhook()  # Ensure no webhook is set
+        updater.start_polling()
+        print("Bot started in polling mode")
         updater.idle()
-
-if __name__ == '__main__':
-    main()
-
-
-
 
 if __name__ == '__main__':
     main()
