@@ -4,6 +4,7 @@ certifi==2025.1.31
 charset-normalizer==3.4.1
 idna==3.10
 pillow==11.1.0
+Flask
 python-dotenv==1.0.1
 python-telegram-bot==13.15
 pytz==2025.1
