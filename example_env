@@ -5,3 +5,4 @@ CHAT_ID=
 PORT=5000
 MONGODB_URI=
 RUN_BOT=local
+WEBHOOK_URL= #Leave empty

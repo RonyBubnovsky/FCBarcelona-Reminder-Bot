@@ -214,10 +214,8 @@ def main():
     scheduler = BackgroundScheduler(timezone="Asia/Jerusalem")
     scheduler.start()
 
-    # Schedule initial match reminders
+    # Schedule initial match reminders and daily updates
     schedule_reminders(updater.bot, scheduler)
-
-    # Schedule daily update at 00:00 Israel time to refresh match schedule
     scheduler.add_job(
         update_schedule,
         'cron',
@@ -227,12 +225,23 @@ def main():
         id="daily_update"
     )
 
+    # Determine whether to use polling (local) or webhooks (deployed)
     run_bot = os.environ.get('RUN_BOT', 'local')
     if run_bot == 'local':
         updater.start_polling()
         updater.idle()
     else:
-        print("Bot polling not started as instance is marked as deployed")
+        # Webhook mode: use the WEBHOOK_URL environment variable
+        webhook_url = os.environ.get('WEBHOOK_URL')
+        if webhook_url:
+            full_webhook_url = f"{webhook_url}/{TELEGRAM_TOKEN}"
+            updater.start_webhook(listen="0.0.0.0", port=PORT, url_path=TELEGRAM_TOKEN)
+            updater.bot.set_webhook(full_webhook_url)
+            print(f"Webhook set to: {full_webhook_url}")
+        else:
+            print("WEBHOOK_URL is not set in environment variables.")
+        updater.idle()
+
 
 
 if __name__ == '__main__':
