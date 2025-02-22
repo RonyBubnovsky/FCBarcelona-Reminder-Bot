@@ -1,0 +1,35 @@
+# TELEGRAM_TOKEN:
+
+# Your Telegram bot token obtained from BotFather when you create a new bot.
+
+TELEGRAM_TOKEN=
+
+# FOOTBALL_API_KEY:
+
+# Your API key from Football-Data.org after signing up for a free account.
+
+FOOTBALL_API_KEY=
+
+# CHAT_ID:
+
+# The Telegram chat ID where the bot sends reminders.
+
+# This can be your personal chat ID (use /start on your bot to retrieve it) or a group chat ID.
+
+CHAT_ID=
+
+# PORT:
+
+# The port number for the minimal Flask web server used for deployment.
+
+# Typically set to 5000.
+
+PORT=
+
+# MONGODB_URI:
+
+# Your MongoDB connection string for connecting to your MongoDB Atlas cluster or another MongoDB instance.
+
+# It should include your username, password, and database name.
+
+MONGODB_URI=

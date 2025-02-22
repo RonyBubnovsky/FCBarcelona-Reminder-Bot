@@ -85,7 +85,6 @@ def send_reminder(bot, game_time, hours_before, opponent):
         f"Reminder: FC Barcelona match against {opponent} at {game_time.strftime('%Y-%m-%d %H:%M %Z')} "
         f"in {hours_before} hours!"
     )
-    # Retrieve all registered chat IDs from the database
     for chat in chats_collection.find():
         chat_id = chat['chat_id']
         bot.send_message(chat_id=chat_id, text=message)
@@ -138,14 +137,18 @@ def register_chat(chat_id):
 def start(update, context):
     """
     Handler for the /start command.
-    Registers the user's chat ID persistently.
+    Registers the user's chat ID persistently and informs the user that the bot
+    will remind them 7, 5, and 2 hours before each FC Barcelona league or Champions League match.
     """
     chat_id = update.message.chat.id
     register_chat(chat_id)
-    update.message.reply_text("You have been registered for FC Barcelona reminders!")
+    update.message.reply_text(
+        "You have been registered for FC Barcelona reminders! "
+        "This bot will remind you 7, 5, and 2 hours before each FC Barcelona league or Champions League match."
+    )
 
 def main():
-    # Start Flask server in a separate thread (for port binding)
+    # Start Flask server in a separate thread for port binding
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
