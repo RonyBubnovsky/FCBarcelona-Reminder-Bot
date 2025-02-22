@@ -1,9 +1,19 @@
+"""
+FC Barcelona Reminder Bot with Persistent MongoDB Storage, Flask Web Server, and Multi-User Support
+
+This bot fetches FC Barcelona's match schedules from Football-Data.org v4,
+schedules reminders (7, 5, and 2 hours before each match), and sends notifications
+to all registered users. Registered chat IDs are stored persistently in MongoDB.
+Includes auto-recovery webhook system and health monitoring.
+"""
+
 import os
 import datetime
 import requests
 import pytz
 import threading
 import telegram
+import time
 from flask import Flask, request
 from telegram.ext import Updater, CommandHandler
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -32,6 +42,50 @@ israel_tz = pytz.timezone("Asia/Jerusalem")
 
 # Initialize Flask app
 app = Flask(__name__)
+
+def check_webhook_health():
+    """
+    Checks if the webhook is working by getting webhook info from Telegram.
+    Returns True if webhook is properly set, False otherwise.
+    """
+    try:
+        webhook_info = bot.get_webhook_info()
+        webhook_url = os.environ.get('WEBHOOK_URL')
+        expected_webhook_url = f"{webhook_url}/{TELEGRAM_TOKEN}"
+        
+        # Check if webhook is set and matches our expected URL
+        if webhook_info.url == expected_webhook_url:
+            return True
+        print(f"Webhook mismatch. Expected: {expected_webhook_url}, Got: {webhook_info.url}")
+        return False
+    except Exception as e:
+        print(f"Error checking webhook health: {e}")
+        return False
+
+def restore_webhook():
+    """
+    Attempts to restore the webhook configuration.
+    """
+    try:
+        webhook_url = os.environ.get('WEBHOOK_URL')
+        if webhook_url:
+            full_webhook_url = f"{webhook_url}/{TELEGRAM_TOKEN}"
+            bot.set_webhook(full_webhook_url)
+            print(f"Restored webhook to: {full_webhook_url}")
+            return True
+    except Exception as e:
+        print(f"Error restoring webhook: {e}")
+    return False
+
+def webhook_monitor():
+    """
+    Background task that monitors webhook health and restores it if needed.
+    """
+    while True:
+        if os.environ.get('RENDER') and not check_webhook_health():
+            print("Webhook appears to be down, attempting to restore...")
+            restore_webhook()
+        time.sleep(60)  # Check every minute
 
 def get_opponent(match):
     """
@@ -71,7 +125,10 @@ def send_reminder(bot, game_time, hours_before, opponent):
     )
     for chat in chats_collection.find():
         chat_id = chat['chat_id']
-        bot.send_message(chat_id=chat_id, text=message)
+        try:
+            bot.send_message(chat_id=chat_id, text=message)
+        except Exception as e:
+            print(f"Error sending reminder to chat {chat_id}: {e}")
     print(f"Sent {hours_before}h reminder for game at {game_time} against {opponent}.")
 
 def schedule_reminders(bot, scheduler):
@@ -191,8 +248,17 @@ def webhook():
 def index():
     return "FC Barcelona Reminder Bot is running!"
 
+@app.route('/health')
+def health_check():
+    """
+    Health check endpoint that verifies the webhook is working.
+    """
+    if check_webhook_health():
+        return "Webhook is healthy", 200
+    return "Webhook is down", 503
+
 def main():
-    global bot, dispatcher  # Make these global so webhook handler can access them
+    global bot, dispatcher
     
     # Initialize bot and dispatcher
     updater = Updater(TELEGRAM_TOKEN, use_context=True)
@@ -217,14 +283,14 @@ def main():
     )
 
     try:
-        # Check deployment environment
         if os.environ.get('RENDER'):
-            # Running on Render - use webhooks
+            # Start webhook monitoring in a background thread
+            monitor_thread = threading.Thread(target=webhook_monitor, daemon=True)
+            monitor_thread.start()
+            
             webhook_url = os.environ.get('WEBHOOK_URL')
             if webhook_url:
-                # Always set up the webhook on Render
                 full_webhook_url = f"{webhook_url}/{TELEGRAM_TOKEN}"
-                # Force set the webhook without deleting first
                 bot.set_webhook(full_webhook_url)
                 print(f"Webhook set to: {full_webhook_url}")
                 
@@ -234,19 +300,21 @@ def main():
                 print("Error: WEBHOOK_URL environment variable not set")
         else:
             # Local development - use polling
-            bot.delete_webhook()  # Ensure no webhook is set
+            bot.delete_webhook()
             updater.start_polling()
             print("Bot started in polling mode")
-            updater.idle()
+            try:
+                updater.idle()
+            except KeyboardInterrupt:
+                print("Bot stopping... Attempting to restore webhook...")
+                # Try to restore webhook before exiting
+                if os.environ.get('RENDER'):
+                    restore_webhook()
+                print("Webhook restored, bot stopped.")
     except Exception as e:
         print(f"Error in main: {e}")
-        # Always try to restore webhook on error if running on Render
         if os.environ.get('RENDER'):
-            webhook_url = os.environ.get('WEBHOOK_URL')
-            if webhook_url:
-                full_webhook_url = f"{webhook_url}/{TELEGRAM_TOKEN}"
-                bot.set_webhook(full_webhook_url)
-                print("Restored webhook after error")
+            restore_webhook()
 
 if __name__ == '__main__':
     main()
