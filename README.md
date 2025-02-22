@@ -3,11 +3,9 @@
 A Telegram bot that sends timely reminders for FC Barcelona's upcoming matches. Never miss a Barça game again! The bot sends notifications 7, 5, and 2 hours before each FC Barcelona league and Champions League match.
 
 ## Project Motivation
-
 As a passionate FC Barcelona fan, I often found myself missing games or rushing to catch them at the last minute due to my busy schedule and the challenge of keeping track of varying match times. This personal pain point inspired me to create a solution that would help not just me, but other Barça fans never miss a match again. The bot automatically sends reminders at strategic intervals before each game, ensuring that fans have enough time to prepare and tune in to support our beloved club. Whether it's a crucial Champions League fixture or a regular league match, this bot helps keep the Culés community connected to every game.
 
 ## Table of Contents
-
 - [Features](#features)
 - [Live Demo](#live-demo)
 - [Prerequisites](#prerequisites)
@@ -20,7 +18,6 @@ As a passionate FC Barcelona fan, I often found myself missing games or rushing 
 - [License](#license)
 
 ## Features
-
 - 🕒 Automated reminders 7, 5, and 2 hours before each match
 - ⚽ Covers both League and Champions League matches
 - 🌐 Match times automatically converted to Israel timezone
@@ -29,16 +26,14 @@ As a passionate FC Barcelona fan, I often found myself missing games or rushing 
 - 🚀 Deployed on Render for 24/7 availability
 
 ## Live Demo
-
 You can try the bot right now:
-
 1. Search for "FCBarcelonaReminderBot" on Telegram
 2. Start a chat with the bot
-3. Send the `/start` command
-4. You'll receive match reminders automatically!
+3. Send the `/start` command to begin receiving notifications
+4. Send the `/remove` command if you wish to stop receiving notifications
+5. You'll receive match reminders automatically!
 
 ## Prerequisites
-
 - Python 3.8 or higher
 - MongoDB account
 - Telegram Bot Token
@@ -46,7 +41,6 @@ You can try the bot right now:
 - pip (Python package manager)
 
 ## Installation
-
 ```bash
 # Clone the repository
 git clone https://github.com/RonyBubnovsky/FCBarcelona-Reminder-Bot.git
@@ -66,7 +60,6 @@ pip install -r requirements.txt
 ```
 
 ## Environment Variables
-
 Create a `.env` file in the root directory with the following variables:
 
 ```env
@@ -74,19 +67,18 @@ TELEGRAM_TOKEN=your_telegram_bot_token
 FOOTBALL_API_KEY=your_football_data_org_api_key
 MONGODB_URI=your_mongodb_connection_string
 PORT=5000
+RUN_BOT=local
 ```
 
 ### How to Get Environment Variables:
 
 1. **TELEGRAM_TOKEN**:
-
    - Open Telegram and search for "@BotFather"
    - Send `/newbot` command
    - Follow the instructions to create a new bot
    - Copy the API token provided
 
 2. **FOOTBALL_API_KEY**:
-
    - Visit [Football-Data.org](https://www.football-data.org)
    - Register for a free account
    - Navigate to your account dashboard
@@ -99,8 +91,11 @@ PORT=5000
    - Copy the connection string
    - Replace `<password>` with your database user password
 
-## Running Locally
+4. **RUN_BOT**:
+   - Set to `local` when running the bot locally
+   - This variable helps distinguish between local development and production environments
 
+## Running Locally
 After setting up the environment variables:
 
 ```bash
@@ -112,7 +107,6 @@ python bot.py
 ```
 
 ## Deployment
-
 The bot is configured for deployment on Render. To deploy your own instance:
 
 1. Fork this repository
@@ -122,7 +116,6 @@ The bot is configured for deployment on Render. To deploy your own instance:
 5. Deploy!
 
 ## Architecture
-
 - **Flask Web Server**: Keeps the bot alive on Render
 - **APScheduler**: Manages reminder scheduling
 - **MongoDB**: Stores registered user chat IDs
@@ -130,7 +123,6 @@ The bot is configured for deployment on Render. To deploy your own instance:
 - **Football-Data.org API**: Provides match schedule data
 
 ## Contributing
-
 Contributions are welcome! Please feel free to submit a Pull Request.
 
 1. Fork the repository
@@ -140,5 +132,4 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 5. Open a Pull Request
 
 ## License
-
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
