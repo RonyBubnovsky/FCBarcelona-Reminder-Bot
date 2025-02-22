@@ -15,3 +15,4 @@ tornado==6.1
 tzdata==2025.1
 tzlocal==5.3
 urllib3<2
+pymongo

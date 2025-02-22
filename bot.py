@@ -1,10 +1,10 @@
 """
-FC Barcelona Reminder Bot with Flask Web Server
+FC Barcelona Reminder Bot with Persistent MongoDB Storage and Flask Web Server
 
-This bot fetches FC Barcelona's league and Champions League match schedules from Football-Data.org,
-schedules reminders (7, 5, and 2 hours before each match), and runs a minimal Flask web server on the port
-specified by the PORT environment variable. The web server allows Render to detect an open port,
-ensuring the service remains active.
+This bot fetches FC Barcelona's match schedules from Football-Data.org,
+schedules reminders (7, 5, and 2 hours before each match), and sends notifications
+to all registered users. Registered chat IDs are stored persistently in MongoDB.
+A minimal Flask web server is run on the specified PORT (for deployment purposes).
 
 """
 
@@ -17,15 +17,21 @@ from flask import Flask
 from telegram.ext import Updater, CommandHandler
 from apscheduler.schedulers.background import BackgroundScheduler
 from dotenv import load_dotenv
+from pymongo import MongoClient
 
-# Load environment variables from .env file
+# Load environment variables from .env
 load_dotenv()
 
-# Retrieve credentials
+# Retrieve credentials and configuration
 TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
 FOOTBALL_API_KEY = os.environ.get('FOOTBALL_API_KEY')
-CHAT_ID = os.environ.get('CHAT_ID')  # Chat ID where the bot sends notifications
-PORT = int(os.environ.get('PORT', 5000))  # Port for Flask server
+PORT = int(os.environ.get('PORT', 5000))
+MONGODB_URI = os.environ.get('MONGODB_URI')
+
+# Connect to MongoDB
+mongo_client = MongoClient(MONGODB_URI)
+db = mongo_client["fcbarca_bot"]
+chats_collection = db.registered_chats
 
 # Football-Data.org v4 endpoint for FC Barcelona (team ID 81)
 FOOTBALL_API_URL = "http://api.football-data.org/v4/teams/81/matches?status=SCHEDULED"
@@ -33,7 +39,7 @@ FOOTBALL_API_URL = "http://api.football-data.org/v4/teams/81/matches?status=SCHE
 # Define Israel timezone
 israel_tz = pytz.timezone("Asia/Jerusalem")
 
-# Initialize Flask app
+# Initialize Flask app for Render port binding
 app = Flask(__name__)
 
 @app.route('/')
@@ -73,19 +79,22 @@ def fetch_game_schedule():
 
 def send_reminder(bot, game_time, hours_before, opponent):
     """
-    Sends a reminder message via the Telegram bot.
+    Sends a reminder message via the Telegram bot to all registered chats.
     """
     message = (
         f"Reminder: FC Barcelona match against {opponent} at {game_time.strftime('%Y-%m-%d %H:%M %Z')} "
         f"in {hours_before} hours!"
     )
-    bot.send_message(chat_id=CHAT_ID, text=message)
+    # Retrieve all registered chat IDs from the database
+    for chat in chats_collection.find():
+        chat_id = chat['chat_id']
+        bot.send_message(chat_id=chat_id, text=message)
     print(f"Sent {hours_before}h reminder for game at {game_time} against {opponent}.")
 
 def schedule_reminders(bot, scheduler):
     """
-    Fetches the match schedule and schedules reminder jobs.
-    Reminders are set for 7, 5, and 2 hours before the match.
+    Fetches the match schedule and schedules reminder jobs for each match.
+    Reminders are set for 7, 5, and 2 hours before each match.
     """
     matches = fetch_game_schedule()
     now = datetime.datetime.now(israel_tz)
@@ -109,27 +118,40 @@ def schedule_reminders(bot, scheduler):
 def update_schedule(bot, scheduler):
     """
     Clears all scheduled jobs and re-fetches the match schedule to update reminders.
-    This job is scheduled to run daily at 00:00 Israel time.
+    This job runs daily at 00:00 Israel time.
     """
     print("Updating match schedule...")
     scheduler.remove_all_jobs()
     schedule_reminders(bot, scheduler)
     print("Schedule updated.")
 
+def register_chat(chat_id):
+    """
+    Registers a chat ID in the MongoDB database if it's not already registered.
+    """
+    if chats_collection.find_one({"chat_id": chat_id}) is None:
+        chats_collection.insert_one({"chat_id": chat_id})
+        print(f"Registered new chat: {chat_id}")
+    else:
+        print(f"Chat {chat_id} already registered.")
+
 def start(update, context):
     """
     Handler for the /start command.
+    Registers the user's chat ID persistently.
     """
-    update.message.reply_text("FC Barcelona Reminder Bot is running!")
+    chat_id = update.message.chat.id
+    register_chat(chat_id)
+    update.message.reply_text("You have been registered for FC Barcelona reminders!")
 
 def main():
-    # Start Flask server in a separate thread so that it doesn't block the bot
+    # Start Flask server in a separate thread (for port binding)
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
     print(f"Flask web server running on port {PORT}...")
 
-    # Initialize the Telegram bot and dispatcher
+    # Initialize Telegram bot and dispatcher
     updater = Updater(TELEGRAM_TOKEN, use_context=True)
     dp = updater.dispatcher
     dp.add_handler(CommandHandler("start", start))
@@ -141,7 +163,7 @@ def main():
     # Schedule initial match reminders
     schedule_reminders(updater.bot, scheduler)
 
-    # Schedule daily update at 00:00 Israel time
+    # Schedule daily update at 00:00 Israel time to refresh the schedule
     scheduler.add_job(
         update_schedule,
         'cron',
