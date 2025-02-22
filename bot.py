@@ -198,23 +198,15 @@ def remove(update, context):
     update.message.reply_text("You have been removed from FC Barcelona reminders. Send /start to register again.")
 
 def main():
-    # Start Flask server in a separate thread (for port binding on deployment)
-    flask_thread = threading.Thread(target=run_flask)
-    flask_thread.daemon = True
-    flask_thread.start()
-    print(f"Flask web server running on port {PORT}...")
-
     # Initialize Telegram bot and dispatcher
     updater = Updater(TELEGRAM_TOKEN, use_context=True)
     dp = updater.dispatcher
     dp.add_handler(CommandHandler("start", start))
     dp.add_handler(CommandHandler("remove", remove))
 
-    # Initialize APScheduler with Israel timezone
+    # Initialize APScheduler with Israel timezone and schedule jobs
     scheduler = BackgroundScheduler(timezone="Asia/Jerusalem")
     scheduler.start()
-
-    # Schedule initial match reminders and daily updates
     schedule_reminders(updater.bot, scheduler)
     scheduler.add_job(
         update_schedule,
@@ -225,13 +217,18 @@ def main():
         id="daily_update"
     )
 
-    # Determine whether to use polling (local) or webhooks (deployed)
+    # Check the environment variable to decide the mode
     run_bot = os.environ.get('RUN_BOT', 'local')
     if run_bot == 'local':
+        # In local mode, start a Flask server for health checks and use polling
+        flask_thread = threading.Thread(target=run_flask)
+        flask_thread.daemon = True
+        flask_thread.start()
+        print(f"Flask web server running on port {PORT}...")
         updater.start_polling()
         updater.idle()
     else:
-        # Webhook mode: use the WEBHOOK_URL environment variable
+        # In deployed mode, use webhooks and do not start a separate Flask server
         webhook_url = os.environ.get('WEBHOOK_URL')
         if webhook_url:
             full_webhook_url = f"{webhook_url}/{TELEGRAM_TOKEN}"
@@ -241,6 +238,10 @@ def main():
         else:
             print("WEBHOOK_URL is not set in environment variables.")
         updater.idle()
+
+if __name__ == '__main__':
+    main()
+
 
 
 
