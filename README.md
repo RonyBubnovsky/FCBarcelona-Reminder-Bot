@@ -66,8 +66,7 @@ Create a `.env` file in the root directory with the following variables:
 TELEGRAM_TOKEN=your_telegram_bot_token
 FOOTBALL_API_KEY=your_football_data_org_api_key
 MONGODB_URI=your_mongodb_connection_string
-PORT=5000
-RUN_BOT=local
+PORT=8080
 ```
 
 ### How to Get Environment Variables:
@@ -90,10 +89,6 @@ RUN_BOT=local
    - Click "Connect" and choose "Connect your application"
    - Copy the connection string
    - Replace `<password>` with your database user password
-
-4. **RUN_BOT**:
-   - Set to `local` when running the bot locally
-   - This variable helps distinguish between local development and production environments
 
 ## Running Locally
 After setting up the environment variables:
