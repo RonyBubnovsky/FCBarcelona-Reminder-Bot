@@ -216,29 +216,37 @@ def main():
         id="daily_update"
     )
 
-    # Check deployment environment
-    if os.environ.get('RENDER'):
-        # Running on Render - use webhooks
-        webhook_url = os.environ.get('WEBHOOK_URL')
-        if webhook_url:
-            # Remove any existing webhook first
-            bot.delete_webhook()
-            
-            # Set up the new webhook
-            webhook_url = f"{webhook_url}/{TELEGRAM_TOKEN}"
-            bot.set_webhook(webhook_url)
-            print(f"Webhook set to: {webhook_url}")
-            
-            # Start Flask server
-            app.run(host='0.0.0.0', port=PORT)
+    try:
+        # Check deployment environment
+        if os.environ.get('RENDER'):
+            # Running on Render - use webhooks
+            webhook_url = os.environ.get('WEBHOOK_URL')
+            if webhook_url:
+                # Always set up the webhook on Render
+                full_webhook_url = f"{webhook_url}/{TELEGRAM_TOKEN}"
+                # Force set the webhook without deleting first
+                bot.set_webhook(full_webhook_url)
+                print(f"Webhook set to: {full_webhook_url}")
+                
+                # Start Flask server
+                app.run(host='0.0.0.0', port=PORT)
+            else:
+                print("Error: WEBHOOK_URL environment variable not set")
         else:
-            print("Error: WEBHOOK_URL environment variable not set")
-    else:
-        # Local development - use polling
-        bot.delete_webhook()  # Ensure no webhook is set
-        updater.start_polling()
-        print("Bot started in polling mode")
-        updater.idle()
+            # Local development - use polling
+            bot.delete_webhook()  # Ensure no webhook is set
+            updater.start_polling()
+            print("Bot started in polling mode")
+            updater.idle()
+    except Exception as e:
+        print(f"Error in main: {e}")
+        # Always try to restore webhook on error if running on Render
+        if os.environ.get('RENDER'):
+            webhook_url = os.environ.get('WEBHOOK_URL')
+            if webhook_url:
+                full_webhook_url = f"{webhook_url}/{TELEGRAM_TOKEN}"
+                bot.set_webhook(full_webhook_url)
+                print("Restored webhook after error")
 
 if __name__ == '__main__':
     main()
