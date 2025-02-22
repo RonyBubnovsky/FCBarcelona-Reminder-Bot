@@ -1,7 +1,7 @@
 """
-FC Barcelona Reminder Bot with Persistent MongoDB Storage and Flask Web Server
+FC Barcelona Reminder Bot with Persistent MongoDB Storage, Flask Web Server, and Multi-User Support
 
-This bot fetches FC Barcelona's match schedules from Football-Data.org,
+This bot fetches FC Barcelona's match schedules from Football-Data.org v4,
 schedules reminders (7, 5, and 2 hours before each match), and sends notifications
 to all registered users. Registered chat IDs are stored persistently in MongoDB.
 A minimal Flask web server is run on the specified PORT (for deployment purposes).
@@ -28,7 +28,7 @@ FOOTBALL_API_KEY = os.environ.get('FOOTBALL_API_KEY')
 PORT = int(os.environ.get('PORT', 5000))
 MONGODB_URI = os.environ.get('MONGODB_URI')
 
-# Connect to MongoDB
+# Connect to MongoDB and use the "fcbarca_bot" database
 mongo_client = MongoClient(MONGODB_URI)
 db = mongo_client["fcbarca_bot"]
 chats_collection = db.registered_chats
@@ -137,18 +137,48 @@ def register_chat(chat_id):
 def start(update, context):
     """
     Handler for the /start command.
-    Registers the user's chat ID persistently and informs the user that the bot
-    will remind them 7, 5, and 2 hours before each FC Barcelona league or Champions League match.
+    Registers the user's chat ID persistently and sends a welcome message along with
+    the upcoming matches for the next 7 days (grouped into Champions League and League matches).
     """
     chat_id = update.message.chat.id
     register_chat(chat_id)
-    update.message.reply_text(
-        "You have been registered for FC Barcelona reminders! "
-        "This bot will remind you 7, 5, and 2 hours before each FC Barcelona league or Champions League match."
+
+    now = datetime.datetime.now(israel_tz)
+    week_later = now + datetime.timedelta(days=7)
+    matches = fetch_game_schedule()
+    
+    league_games = []
+    champions_games = []
+    
+    for match in matches:
+        game_time = match.get("localDate")
+        if game_time and now <= game_time <= week_later:
+            comp_name = match.get("competition", {}).get("name", "").lower()
+            opponent = get_opponent(match)
+            match_info = f"{game_time.strftime('%Y-%m-%d %H:%M %Z')} - vs {opponent}"
+            if "champions" in comp_name:
+                champions_games.append(match_info)
+            elif "liga" in comp_name:
+                league_games.append(match_info)
+            else:
+                league_games.append(match_info)  # default to league if unrecognized
+            
+    welcome = (
+        "You have been registered for FC Barcelona reminders!\n"
+        "This bot will remind you 7, 5, and 2 hours before each FC Barcelona league or Champions League match.\n\n"
+        "Here are your upcoming games for the week:\n"
     )
+    if champions_games:
+        welcome += "\n**Champions League Matches:**\n" + "\n".join(champions_games) + "\n"
+    if league_games:
+        welcome += "\n**League Matches:**\n" + "\n".join(league_games) + "\n"
+    if not champions_games and not league_games:
+        welcome += "\nNo upcoming matches within the next week."
+    
+    update.message.reply_text(welcome)
 
 def main():
-    # Start Flask server in a separate thread for port binding
+    # Start Flask server in a separate thread (for port binding on deployment)
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
@@ -166,7 +196,7 @@ def main():
     # Schedule initial match reminders
     schedule_reminders(updater.bot, scheduler)
 
-    # Schedule daily update at 00:00 Israel time to refresh the schedule
+    # Schedule daily update at 00:00 Israel time to refresh match schedule
     scheduler.add_job(
         update_schedule,
         'cron',
