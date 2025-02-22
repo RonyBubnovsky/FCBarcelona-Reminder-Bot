@@ -10,7 +10,7 @@ RUN pip install --upgrade pip && pip install -r requirements.txt
 COPY . .
 
 # Expose the port specified by the PORT environment variable (default 5000)
-EXPOSE 5000
+EXPOSE 443
 
 # Run the bot
 CMD ["python", "bot.py"]
