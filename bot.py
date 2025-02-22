@@ -4,7 +4,10 @@ FC Barcelona Reminder Bot with Persistent MongoDB Storage, Flask Web Server, and
 This bot fetches FC Barcelona's match schedules from Football-Data.org v4,
 schedules reminders (7, 5, and 2 hours before each match), and sends notifications
 to all registered users. Registered chat IDs are stored persistently in MongoDB.
-Includes auto-recovery webhook system and health monitoring.
+Includes an auto-recovery webhook system, health monitoring, and a /standings command
+to display the La Liga standings.
+
+Author: Your Name
 """
 
 import os
@@ -25,7 +28,6 @@ load_dotenv()
 
 # Retrieve credentials and configuration
 TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
-print(TELEGRAM_TOKEN)
 FOOTBALL_API_KEY = os.environ.get('FOOTBALL_API_KEY')
 PORT = int(os.environ.get('PORT', 8080))
 MONGODB_URI = os.environ.get('MONGODB_URI')
@@ -35,14 +37,24 @@ mongo_client = MongoClient(MONGODB_URI)
 db = mongo_client["fcbarca_bot"]
 chats_collection = db.registered_chats
 
-# Football-Data.org v4 endpoint for FC Barcelona (team ID 81)
+# Football-Data.org v4 endpoint for FC Barcelona matches (team ID 81)
 FOOTBALL_API_URL = "http://api.football-data.org/v4/teams/81/matches?status=SCHEDULED"
+
+# Football-Data.org v4 endpoint for La Liga standings (competition code PD)
+STANDINGS_API_URL = "http://api.football-data.org/v4/competitions/PD/standings"
 
 # Define Israel timezone
 israel_tz = pytz.timezone("Asia/Jerusalem")
 
-# Initialize Flask app
+# Initialize Flask app (for Render port binding and health checks)
 app = Flask(__name__)
+
+@app.route('/')
+def index():
+    return "FC Barcelona Reminder Bot is running!"
+
+def run_flask():
+    app.run(host='0.0.0.0', port=PORT)
 
 def check_webhook_health():
     """
@@ -53,8 +65,6 @@ def check_webhook_health():
         webhook_info = bot.get_webhook_info()
         webhook_url = os.environ.get('WEBHOOK_URL')
         expected_webhook_url = f"{webhook_url}/{TELEGRAM_TOKEN}"
-        
-        # Check if webhook is set and matches our expected URL
         if webhook_info.url == expected_webhook_url:
             return True
         print(f"Webhook mismatch. Expected: {expected_webhook_url}, Got: {webhook_info.url}")
@@ -116,6 +126,18 @@ def fetch_game_schedule():
         print("Error fetching match schedule:", response.status_code, response.text)
         return []
 
+def fetch_standings():
+    """
+    Fetches the La Liga standings from Football-Data.org (v4).
+    """
+    headers = {"X-Auth-Token": FOOTBALL_API_KEY}
+    response = requests.get(STANDINGS_API_URL, headers=headers)
+    if response.status_code == 200:
+        return response.json()
+    else:
+        print("Error fetching standings:", response.status_code, response.text)
+        return None
+
 def send_reminder(bot, game_time, hours_before, opponent, home_away):
     """
     Sends a reminder message via the Telegram bot to all registered chats.
@@ -142,7 +164,6 @@ def schedule_reminders(bot, scheduler):
     for match in matches:
         game_time = match['localDate']
         opponent = get_opponent(match)
-        # Determine home or away based on FC Barcelona's team ID (81)
         is_home = match.get('homeTeam', {}).get('id') == 81
         home_away = "Home" if is_home else "Away"
         if game_time > now:
@@ -189,6 +210,40 @@ def remove_chat(chat_id):
     else:
         print(f"Chat {chat_id} was not registered.")
 
+def standings(update, context):
+    """
+    Handler for the /standings command.
+    Fetches the La Liga standings from Football-Data.org (v4) and sends them to the user.
+    """
+    data = fetch_standings()
+    if not data:
+        update.message.reply_text("Unable to fetch standings at this time.")
+        return
+
+    # Look for the standings of type "TOTAL"
+    table = None
+    for standing in data.get("standings", []):
+        if standing.get("type") == "TOTAL":
+            table = standing.get("table", [])
+            break
+
+    if not table:
+        update.message.reply_text("Standings data is not available.")
+        return
+
+    lines = ["*La Liga Standings:*"]
+    for entry in table:
+        pos = entry.get("position")
+        team_name = entry.get("team", {}).get("name")
+        points = entry.get("points")
+        won = entry.get("won")
+        draw = entry.get("draw")
+        lost = entry.get("lost")
+        line = f"{pos}. {team_name} - {points} pts (W:{won} D:{draw} L:{lost})"
+        lines.append(line)
+    message = "\n".join(lines)
+    update.message.reply_text(message, parse_mode=telegram.ParseMode.MARKDOWN)
+
 def start(update, context):
     """
     Handler for the /start command.
@@ -210,11 +265,9 @@ def start(update, context):
         if game_time and now <= game_time <= week_later:
             comp_name = match.get("competition", {}).get("name", "").lower()
             opponent = get_opponent(match)
-            # Determine if it's a home or away game based on FC Barcelona's team ID (81)
             is_home = match.get('homeTeam', {}).get('id') == 81
             home_away = "Home" if is_home else "Away"
             match_info = f"{game_time.strftime('%Y-%m-%d %H:%M %Z')} - vs {opponent} ({home_away})"
-            
             if "champions" in comp_name:
                 champions_games.append(match_info)
             elif "liga" in comp_name:
@@ -245,29 +298,9 @@ def remove(update, context):
     remove_chat(chat_id)
     update.message.reply_text("You have been removed from FC Barcelona reminders. Send /start to register again.")
 
-@app.route(f'/{TELEGRAM_TOKEN}', methods=['POST'])
-def webhook():
-    """Handle incoming webhook updates from Telegram"""
-    update = telegram.Update.de_json(request.get_json(force=True), bot)
-    dispatcher.process_update(update)
-    return 'ok'
-
-@app.route('/')
-def index():
-    return "FC Barcelona Reminder Bot is running!"
-
-@app.route('/health')
-def health_check():
-    """
-    Health check endpoint that verifies the webhook is working.
-    """
-    if check_webhook_health():
-        return "Webhook is healthy", 200
-    return "Webhook is down", 503
-
 def main():
     global bot, dispatcher
-    
+
     # Initialize bot and dispatcher
     updater = Updater(TELEGRAM_TOKEN, use_context=True)
     bot = updater.bot
@@ -276,8 +309,9 @@ def main():
     # Add command handlers
     dispatcher.add_handler(CommandHandler("start", start))
     dispatcher.add_handler(CommandHandler("remove", remove))
+    dispatcher.add_handler(CommandHandler("standings", standings))
 
-    # Initialize and start the scheduler
+    # Initialize APScheduler with Israel timezone
     scheduler = BackgroundScheduler(timezone="Asia/Jerusalem")
     scheduler.start()
     schedule_reminders(bot, scheduler)
@@ -291,22 +325,17 @@ def main():
     )
 
     if os.environ.get('DEVELOPMENT'):
-        # In development mode, delete the webhook first and then use polling.
+        # Development mode: use polling
         print("Running in development mode: deleting webhook and using polling.")
         try:
             bot.delete_webhook()
-            # Wait briefly to ensure deletion propagates
             time.sleep(1)
         except Exception as e:
             print("Error deleting webhook:", e)
-        try:
-            updater.start_polling()
-            updater.idle()
-        except KeyboardInterrupt:
-            print("Exiting development mode, restoring webhook...")
-            restore_webhook()
+        updater.start_polling()
+        updater.idle()
     else:
-        # In production mode, assume Render is active and use the webhook.
+        # Production mode: use webhooks and monitor health
         monitor_thread = threading.Thread(target=webhook_monitor, daemon=True)
         monitor_thread.start()
         webhook_url = os.environ.get('WEBHOOK_URL')
@@ -314,10 +343,11 @@ def main():
             full_webhook_url = f"{webhook_url}/{TELEGRAM_TOKEN}"
             bot.set_webhook(full_webhook_url)
             print(f"Webhook set to: {full_webhook_url}")
+            # In production mode, use the Flask server for incoming webhook updates
             app.run(host='0.0.0.0', port=PORT)
         else:
             print("Error: WEBHOOK_URL environment variable not set")
-
+            updater.idle()
 
 if __name__ == '__main__':
     main()
