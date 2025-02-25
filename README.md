@@ -69,6 +69,7 @@ Create a `.env` file in the root directory with the following variables:
 TELEGRAM_TOKEN=your_telegram_bot_token
 FOOTBALL_API_KEY=your_football_data_org_api_key
 MONGODB_URI=your_mongodb_connection_string
+CHAT_ID=your_telegram_chat_id
 PORT=8080
 DEVELOPMENT=1
 ```
@@ -93,6 +94,28 @@ DEVELOPMENT=1
    - Click "Connect" and choose "Connect your application"
    - Copy the connection string
    - Replace `<password>` with your database user password
+
+4. **CHAT_ID**:
+   - **Method 1**: Use the `@userinfobot`
+     - Search for "@userinfobot" in Telegram
+     - Start a conversation with this bot
+     - The bot will automatically reply with your user ID
+   
+   - **Method 2**: Use `@RawDataBot`
+     - Search for "@RawDataBot" in Telegram
+     - Start a conversation with this bot
+     - The bot will send you a detailed JSON with your information including your chat ID
+   
+   - **Method 3**: Programmatically capture the chat ID
+     - Add a logging line in your bot's message handler that prints the chat ID
+     - Example code to add to your message handler:
+       ```python
+       def handle_message(update, context):
+           chat_id = update.effective_chat.id
+           print(f"Chat ID: {chat_id}")
+           # Rest of your handler code...
+       ```
+     - Run your bot locally, send a message to it, and check your console output
 
 ## Running Locally
 After setting up the environment variables:
