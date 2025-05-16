@@ -11,7 +11,7 @@ pytz==2025.1
 requests==2.32.3
 setuptools==75.8.0
 six==1.17.0
-tornado==6.1
+tornado>=6.5.0
 tzdata==2025.1
 tzlocal==5.3
 urllib3<2
